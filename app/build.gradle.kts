@@ -78,6 +78,8 @@ android {
 
     buildFeatures {
         compose = true
+        // IShellService, the Shizuku user service.
+        aidl = true
     }
 }
 
@@ -123,4 +125,7 @@ dependencies {
     implementation(libs.coroutines.android)
 
     implementation(libs.okhttp)
+
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 }

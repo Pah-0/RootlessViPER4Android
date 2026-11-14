@@ -14,8 +14,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.llsl.viper4android.service.ViperService
 
 // Invisible activity that asks for the microphone permission (needed for any
-// AudioRecord) and then for screen capture consent, whose token lets
-// ViperService capture other apps' playback.
+// AudioRecord), grants the adb-only permissions through Shizuku if it can, and
+// then asks for screen capture consent, whose token lets ViperService capture
+// other apps' playback.
 class CaptureConsentActivity : ComponentActivity() {
     companion object {
         const val NOTIFICATION_ID = 2
@@ -27,7 +28,7 @@ class CaptureConsentActivity : ComponentActivity() {
 
     private val permissionRequest =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
-            if (granted[Manifest.permission.RECORD_AUDIO] == true) requestProjection() else finishWith(null)
+            if (granted[Manifest.permission.RECORD_AUDIO] == true) grantAdbPermissions() else finishWith(null)
         }
 
     private val projectionRequest =
@@ -44,7 +45,15 @@ class CaptureConsentActivity : ComponentActivity() {
                 add(Manifest.permission.RECORD_AUDIO)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(Manifest.permission.POST_NOTIFICATIONS)
             }.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isEmpty()) requestProjection() else permissionRequest.launch(missing.toTypedArray())
+        if (missing.isEmpty()) grantAdbPermissions() else permissionRequest.launch(missing.toTypedArray())
+    }
+
+    // With the PROJECT_MEDIA app-op granted, the consent below is approved
+    // without a prompt.
+    private fun grantAdbPermissions() {
+        AdbGrants.grantWithShizuku(this) {
+            if (!isFinishing) requestProjection()
+        }
     }
 
     private fun requestProjection() {

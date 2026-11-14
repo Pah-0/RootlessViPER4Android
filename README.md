@@ -10,8 +10,11 @@ It installs alongside the original app (`dev.pah.viper4android.rootless`) and ne
 ## Setup
 
 1. Install the APK.
-2. From a computer with adb (or Shizuku / LADB on the phone), grant the permission that lets the app see which apps
-   are playing, so it can mute their original output:
+
+   If [Shizuku](https://shizuku.rikka.app) is running, skip to step 4: the first time you turn ViPER on, the app asks
+   for Shizuku access and grants steps 2 and 3 itself.
+2. From a computer with adb (or LADB on the phone), grant the permission that lets the app see which apps are
+   playing, so it can mute their original output:
 
    ```sh
    adb shell pm grant dev.pah.viper4android.rootless android.permission.DUMP
