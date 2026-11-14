@@ -18,8 +18,15 @@ It installs alongside the original app (`dev.pah.viper4android.rootless`) and ne
    ```
 
    Without it you hear each app twice: once processed, once not.
-3. Turn ViPER on. Android asks to share your screen: choose the whole screen. Only the audio is used.
-4. Don't run RootlessJamesDSP (or anything else that captures and mutes audio) at the same time.
+3. Optional but recommended: let the app capture audio without asking each time. On Android 15 and later this also
+   stops capture from ending when the screen locks.
+
+   ```sh
+   adb shell appops set dev.pah.viper4android.rootless PROJECT_MEDIA allow
+   ```
+4. Turn ViPER on. Without step 3, Android asks to share your screen each time: choose the whole screen. Only the
+   audio is used.
+5. Don't run RootlessJamesDSP (or anything else that captures and mutes audio) at the same time.
 
 ## Limitations
 
@@ -28,7 +35,8 @@ These come from how rootless capture works, and RootlessJamesDSP has them too:
 - Apps that forbid capture of their audio (some calls, DRM'd streams) play unprocessed. They're detected and left
   alone rather than muted.
 - Processing adds latency (about 0.1 s), so video can be slightly out of sync with its sound.
-- Android shows the screen-sharing indicator while ViPER is on, and asks again for consent each time it starts.
+- Android shows the screen-sharing indicator while ViPER is on, and asks for consent each time it starts unless
+  `PROJECT_MEDIA` is allowed (setup step 3).
 - The settings for driver mode (AIDL/HIDL), global/per-app mode and the Magisk driver are upstream leftovers and
   have no effect here.
 

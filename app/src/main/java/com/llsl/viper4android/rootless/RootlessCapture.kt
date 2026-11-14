@@ -93,7 +93,7 @@ class RootlessCapture(
                     FileLogger.i("Capture", "Recorder rebuilt")
                 }
                 val rec = recorder ?: break
-                val out = track ?: break
+                val out = track
 
                 // Nothing to process: let the audio hardware sleep.
                 if (muter.isTracking && !muter.hasMutedSessions) {
