@@ -5,6 +5,7 @@
     <string name="notification_channel_description">Shows when ViPER4Android is processing audio</string>
     <string name="notification_title">ViPER4Android</string>
     <string name="notification_text">Audio processing active</string>
+    <string name="notification_text_off">Off</string>
     <string name="rootless_consent_title">Tap to start ViPER4Android</string>
     <string name="rootless_consent_text">Allow audio capture so ViPER can process other apps\' sound</string>
     <string name="library_search">Search</string>

@@ -276,14 +276,19 @@ class ViperService : LifecycleService() {
                 it.start()
             }
         isCapturing = true
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification())
     }
 
     private fun stopCapture() {
         val hadProjection = projection != null
         releaseCapture()
         // Drop the media projection type so the system stops showing that
-        // the screen is being shared.
-        if (hadProjection) startForegroundAs(ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        // the screen is being shared; this also updates the notification.
+        if (hadProjection) {
+            startForegroundAs(ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification())
+        }
     }
 
     private fun releaseCapture() {
@@ -760,7 +765,7 @@ class ViperService : LifecycleService() {
         return NotificationCompat
             .Builder(this, SERVICE_CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text))
+            .setContentText(getString(if (isCapturing) R.string.notification_text else R.string.notification_text_off))
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)
             .setContentIntent(pendingIntent)

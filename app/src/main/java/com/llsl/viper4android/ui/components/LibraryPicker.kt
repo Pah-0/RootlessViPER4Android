@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
@@ -133,6 +134,14 @@ private fun LibraryPickerDialog(
             }
         }
 
+    // Open at the current selection, with a couple of rows above it showing.
+    // Row 0 is "None".
+    val listState =
+        rememberLazyListState(
+            initialFirstVisibleItemIndex =
+                (filtered.indexOfFirst { it.key == selectedKey } + 1 - 2).coerceAtLeast(0),
+        )
+
     AlertDialog(
         modifier = Modifier.fillMaxWidth(0.9f),
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -169,7 +178,7 @@ private fun LibraryPickerDialog(
                     singleLine = true,
                 )
                 DialogCard {
-                    DialogList {
+                    DialogList(state = listState) {
                         if (query.isBlank()) {
                             item(key = "none") {
                                 EntryRow(
