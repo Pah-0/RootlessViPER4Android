@@ -158,11 +158,14 @@ class AudioOutputDetector(
                         isHeadphone = true,
                     )
                 } else {
+                    // The jack is part of the phone, so its product name is the
+                    // phone's, not the headphones'.
                     AudioDevice(
                         id = AudioDevice.ID_WIRED,
-                        name = productName ?: "Wired Headphone",
+                        name = "Wired Headphones",
                         type = headphone.type,
                         isHeadphone = true,
+                        reportedName = productName,
                     )
                 }
             }

@@ -181,6 +181,7 @@ class MainViewModel
             viewModelScope.launch {
                 loadSettingsPreferences()
                 uiState.update { loadEffectStateFromPrefs(repository, it) }
+                fixReportedDeviceName(initialDevice)
                 val dbName = repository.getDeviceSettings(initialDevice.id)?.deviceName ?: initialDevice.name
                 uiState.update { it.copy(activeDeviceName = dbName, activeDeviceId = initialDevice.id) }
                 loadEqPresetsForBandCount(uiState.value.eq.bandCount)
@@ -191,6 +192,9 @@ class MainViewModel
                 audioOutputDetector.activeDevice.collect { device ->
                     val currentId = uiState.value.activeDeviceId
                     if (device.id != currentId) {
+                        // "Last connected" is when a device stopped being used.
+                        if (currentId.isNotEmpty()) repository.updateDeviceLastConnected(currentId)
+                        fixReportedDeviceName(device)
                         val dbName2 = repository.getDeviceSettings(device.id)?.deviceName ?: device.name
                         uiState.update { it.copy(activeDeviceName = dbName2, activeDeviceId = device.id) }
                         loadDeviceSettings(device)
@@ -979,9 +983,15 @@ class MainViewModel
                         settingsJson = serializeEffectPrefs(state).toString(),
                     ),
                 )
-            } else {
-                repository.updateDeviceLastConnected(device.id)
             }
+        }
+
+        // Entries made before the jack got its own name were named after the
+        // phone; rename those, but not ones the user renamed.
+        private suspend fun fixReportedDeviceName(device: AudioDevice) {
+            val reported = device.reportedName ?: return
+            val existing = repository.getDeviceSettings(device.id) ?: return
+            if (existing.deviceName == reported) repository.renameDevice(device.id, device.name)
         }
 
         private suspend fun saveCurrentDeviceSettings() {
@@ -995,6 +1005,7 @@ class MainViewModel
                     deviceName = existing?.deviceName ?: state.activeDeviceName,
                     isHeadphone = existing?.isHeadphone ?: false,
                     settingsJson = json,
+                    lastConnected = existing?.lastConnected ?: System.currentTimeMillis(),
                 ),
             )
         }

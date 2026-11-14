@@ -5,6 +5,9 @@ data class AudioDevice(
     val name: String,
     val type: Int,
     val isHeadphone: Boolean,
+    // The name Android reported, when it isn't the one shown: for the
+    // headphone jack that's the phone's own model.
+    val reportedName: String? = null,
 ) {
     companion object {
         const val ID_SPEAKER = "speaker"

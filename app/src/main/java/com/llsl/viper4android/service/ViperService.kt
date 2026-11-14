@@ -379,6 +379,10 @@ class ViperService : LifecycleService() {
                         "Service",
                         "Device changed: $currentServiceDeviceId -> ${device.id} (${device.name})",
                     )
+                    // "Last connected" is when a device stopped being used.
+                    if (currentServiceDeviceId.isNotEmpty()) {
+                        repository.updateDeviceLastConnected(currentServiceDeviceId)
+                    }
                     currentServiceDeviceId = device.id
                     lastUiState = null
                     reapplyForDevice(device)
@@ -394,9 +398,7 @@ class ViperService : LifecycleService() {
                 FileLogger.i("Service", "Loading device settings from DB for ${device.id}")
                 val baseState = loadEffectStateFromPrefs(repository)
                 val json = JSONObject(saved.settingsJson)
-                deserializeEffectPrefs(json, baseState).also {
-                    repository.updateDeviceLastConnected(device.id)
-                }
+                deserializeEffectPrefs(json, baseState)
             } else {
                 FileLogger.i("Service", "No DB entry for ${device.id}, using DataStore defaults")
                 val s = loadEffectStateFromPrefs(repository)
