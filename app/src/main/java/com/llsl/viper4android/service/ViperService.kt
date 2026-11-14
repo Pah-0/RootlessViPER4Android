@@ -31,6 +31,8 @@ import com.llsl.viper4android.effect.EffectState
 import com.llsl.viper4android.effect.deserializeEffectPrefs
 import com.llsl.viper4android.effect.loadEffectStateFromPrefs
 import com.llsl.viper4android.effect.serializeEffectPrefs
+import com.llsl.viper4android.library.FileLibrary
+import com.llsl.viper4android.library.LibraryKind
 import com.llsl.viper4android.rootless.CaptureConsentActivity
 import com.llsl.viper4android.rootless.RootlessCapture
 import com.llsl.viper4android.rootless.RootlessTransport
@@ -48,9 +50,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
 import java.util.zip.CRC32
 import javax.inject.Inject
 
@@ -477,6 +479,7 @@ class ViperService : LifecycleService() {
 
     override fun onDestroy() {
         releaseCapture()
+        bulkExecutor.shutdownNow()
         audioOutputDetector?.stop()
         audioOutputDetector = null
         FileLogger.i("Service", "Service destroyed")
@@ -556,11 +559,14 @@ class ViperService : LifecycleService() {
         applyState(state, masterEnabled)
     }
 
-    fun parseVdc(file: File): Pair<List<FloatArray>, List<FloatArray>>? {
+    fun parseVdc(
+        text: String,
+        name: String,
+    ): Pair<List<FloatArray>, List<FloatArray>>? {
         try {
             var coeffs44100: FloatArray? = null
             var coeffs48000: FloatArray? = null
-            for (line in file.readLines()) {
+            for (line in text.lines()) {
                 val trimmed = line.trim()
                 when {
                     trimmed.startsWith("SR_44100:") -> {
@@ -588,7 +594,7 @@ class ViperService : LifecycleService() {
             if (a == null || b == null || a.isEmpty() || a.size != b.size || a.size % 5 != 0) {
                 FileLogger.w(
                     "Service",
-                    "DDC coefficient parse failure: ${file.name} 44100=${a?.size} 48000=${b?.size}",
+                    "DDC coefficient parse failure: $name 44100=${a?.size} 48000=${b?.size}",
                 )
                 return null
             }
@@ -596,14 +602,32 @@ class ViperService : LifecycleService() {
             val sec48 = b.toList().chunked(5).map { it.toFloatArray() }
             return sec44 to sec48
         } catch (e: Exception) {
-            FileLogger.e("Service", "Failed to parse DDC: ${file.name}", e)
+            FileLogger.e("Service", "Failed to parse DDC: $name", e)
             return null
         }
     }
 
+    // Kernel and VDC loads read and decode files, which can be large or in a
+    // slow linked folder: they run one at a time off the main thread.
+    private val bulkExecutor = Executors.newSingleThreadExecutor()
+
     fun applyConvolverKernel(
         fileName: String,
         force: Boolean = false,
+    ) {
+        bulkExecutor.execute { loadConvolverKernel(fileName, force) }
+    }
+
+    fun applyDdcDevice(
+        name: String,
+        force: Boolean = false,
+    ) {
+        bulkExecutor.execute { loadDdcDevice(name, force) }
+    }
+
+    private fun loadConvolverKernel(
+        fileName: String,
+        force: Boolean,
     ) {
         if (!transport.shouldStream(BulkKind.CONVOLVER, fileName, force)) return
         val sendInts: (Int, Int, Int, Int) -> Unit =
@@ -614,14 +638,8 @@ class ViperService : LifecycleService() {
             sendInts(ViperParams.PARAM_CONVOLVER_PREPARE_BUFFER, 0, 0, 1)
             return
         }
-        val src = File(File(getExternalFilesDir(null), "Kernel"), fileName)
-        if (!src.exists()) {
-            FileLogger.w("Service", "Kernel file missing: $fileName")
-            return
-        }
-
         try {
-            val decoded = decodedKernelCache[src.absolutePath]
+            val decoded = decodedKernelCache[fileName]
             val samples: FloatArray
             val rawBytes: ByteArray
             val totalFloats: Int
@@ -633,7 +651,12 @@ class ViperService : LifecycleService() {
                 channelCount = decoded.channelCount
                 crc = decoded.crc
             } else {
-                val d = WavDecoder.decode(src.readBytes())
+                val bytes = FileLibrary.get(this).read(LibraryKind.KERNEL, fileName)
+                if (bytes == null) {
+                    FileLogger.w("Service", "Kernel file missing: $fileName")
+                    return
+                }
+                val d = WavDecoder.decode(bytes)
                 samples = d.samples
                 totalFloats = d.samples.size
                 channelCount = d.channels
@@ -645,7 +668,7 @@ class ViperService : LifecycleService() {
                         .also { for (f in samples) it.putFloat(f) }
                         .array()
                 crc = CRC32().apply { update(rawBytes) }.value.toInt()
-                decodedKernelCache[src.absolutePath] =
+                decodedKernelCache[fileName] =
                     DecodedKernel(samples, rawBytes, totalFloats, channelCount, crc)
             }
 
@@ -673,9 +696,9 @@ class ViperService : LifecycleService() {
         }
     }
 
-    fun applyDdcDevice(
+    private fun loadDdcDevice(
         name: String,
-        force: Boolean = false,
+        force: Boolean,
     ) {
         if (!transport.shouldStream(BulkKind.DDC, name, force)) return
         val sendFloats: (Int, FloatArray) -> Unit =
@@ -684,12 +707,12 @@ class ViperService : LifecycleService() {
             sendFloats(ViperParams.PARAM_DDC_COEFFICIENTS, FloatArray(0))
             return
         }
-        val file = File(File(getExternalFilesDir(null), "DDC"), "$name.vdc")
-        if (!file.exists()) {
+        val bytes = FileLibrary.get(this).read(LibraryKind.VDC, name)
+        if (bytes == null) {
             FileLogger.w("Service", "DDC file missing: $name")
             return
         }
-        val parsed = parseVdc(file) ?: return
+        val parsed = parseVdc(bytes.decodeToString(), FileLibrary.get(this).label(LibraryKind.VDC, name)) ?: return
         val sec44100 = parsed.first
         val sec48000 = parsed.second
         val floatsPerRate = sec44100.size * 5

@@ -73,7 +73,6 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.llsl.viper4android.R
 import com.llsl.viper4android.effect.EffectState
 import com.llsl.viper4android.effect.Effects
@@ -84,6 +83,7 @@ import com.llsl.viper4android.effect.compressorRatioToRaw
 import com.llsl.viper4android.effect.compressorRawToDb
 import com.llsl.viper4android.effect.compressorRawToRatio
 import com.llsl.viper4android.effect.compressorSecondsToMs
+import com.llsl.viper4android.library.LibraryKind
 import com.llsl.viper4android.ui.components.ConfirmDialog
 import com.llsl.viper4android.ui.components.EqCurveGraph
 import com.llsl.viper4android.ui.components.EqEditDialog
@@ -91,6 +91,7 @@ import com.llsl.viper4android.ui.components.InputDialog
 import com.llsl.viper4android.ui.components.LabeledDropdown
 import com.llsl.viper4android.ui.components.LabeledSlider
 import com.llsl.viper4android.ui.components.LabeledSwitch
+import com.llsl.viper4android.ui.components.LibraryPickerField
 import com.llsl.viper4android.ui.components.RichText
 import com.llsl.viper4android.ui.components.SliderEdit
 import com.llsl.viper4android.ui.components.UiDimens
@@ -1080,9 +1081,6 @@ fun DdcSection(
     val enabled = vals.enable
     val device = vals.device
 
-    val vdcFiles by viewModel.vdcFileList.collectAsStateWithLifecycle()
-    val vdcNoneLabel = stringResource(R.string.label_none)
-    val cdvOptions = listOf(vdcNoneLabel) + vdcFiles
 
     EffectSection(
         title = stringResource(R.string.section_ddc),
@@ -1091,15 +1089,13 @@ fun DdcSection(
         descriptionRes = R.string.effect_desc_ddc,
         icon = Icons.Default.SettingsInputComponent,
     ) {
-        LabeledDropdown(
+        LibraryPickerField(
             label = stringResource(R.string.label_ddc_device),
-            selectedValue = device.ifEmpty { vdcNoneLabel },
-            options = cdvOptions,
-            onOptionSelected = { _, value ->
-                viewModel.setDdcDevice(if (value == vdcNoneLabel) "" else value)
-            },
-            onDeleteOption = { _, name -> viewModel.deleteVdcFile(name) },
-            isOptionDeletable = { _, name -> name != vdcNoneLabel },
+            kind = LibraryKind.VDC,
+            selectedKey = device,
+            library = viewModel.fileLibrary,
+            onSelect = viewModel::setDdcDevice,
+            onDeleteImported = { viewModel.deleteVdcFile(it) },
         )
     }
 }
@@ -1473,9 +1469,6 @@ fun ConvolverSection(
     val kernel = vals.kernelFile
     val crossChannel = vals.crossChannel
 
-    val kernelFiles by viewModel.kernelFileList.collectAsStateWithLifecycle()
-    val kernelNoneLabel = stringResource(R.string.label_none)
-    val kernelOptions = listOf(kernelNoneLabel) + kernelFiles
 
     EffectSection(
         title = stringResource(R.string.section_convolver),
@@ -1484,15 +1477,13 @@ fun ConvolverSection(
         descriptionRes = R.string.effect_desc_convolver,
         icon = Icons.Default.BlurCircular,
     ) {
-        LabeledDropdown(
+        LibraryPickerField(
             label = stringResource(R.string.label_convolver_kernel),
-            selectedValue = kernel.ifEmpty { kernelNoneLabel },
-            options = kernelOptions,
-            onOptionSelected = { _, value ->
-                viewModel.setConvolverKernel(if (value == kernelNoneLabel) "" else value)
-            },
-            onDeleteOption = { _, name -> viewModel.deleteKernelFile(name) },
-            isOptionDeletable = { _, name -> name != kernelNoneLabel },
+            kind = LibraryKind.KERNEL,
+            selectedKey = kernel,
+            library = viewModel.fileLibrary,
+            onSelect = viewModel::setConvolverKernel,
+            onDeleteImported = { viewModel.deleteKernelFile(it) },
         )
         LabeledSlider(
             label = stringResource(R.string.label_convolver_cross_channel),

@@ -7,6 +7,13 @@
     <string name="notification_text">Audio processing active</string>
     <string name="rootless_consent_title">Tap to start ViPER4Android</string>
     <string name="rootless_consent_text">Allow audio capture so ViPER can process other apps\' sound</string>
+    <string name="library_search">Search</string>
+    <string name="library_rescan">Rescan</string>
+    <string name="library_empty">No files. Import some, or add a folder that has them.</string>
+    <string name="library_folders">Linked folders</string>
+    <string name="library_add_folder">Add folder</string>
+    <string name="library_add_folder_desc">Kernels and VDCs in it and its subfolders are used in place, not copied</string>
+    <string name="library_remove_folder">Remove folder</string>
     <string name="rootless_dump_missing">ViPER4Android stayed off: the DUMP permission isn\'t granted. See the README, or turn it on to grant it through Shizuku.</string>
     <string name="rootless_capture_failed">ViPER4Android stopped: %1$s</string>
     <string name="notification_bulk_op_channel_name">Bulk Operations</string>

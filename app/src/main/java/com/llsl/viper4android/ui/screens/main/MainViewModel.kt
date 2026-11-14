@@ -45,6 +45,7 @@ import com.llsl.viper4android.effect.deserializeEffectPrefs
 import com.llsl.viper4android.effect.loadEffectStateFromPrefs
 import com.llsl.viper4android.effect.saveEffectPrefs
 import com.llsl.viper4android.effect.serializeEffectPrefs
+import com.llsl.viper4android.library.FileLibrary
 import com.llsl.viper4android.service.ViperService
 import com.llsl.viper4android.utils.FileLogger
 import com.llsl.viper4android.utils.ReleaseInfo
@@ -128,11 +129,8 @@ class MainViewModel
         val driverStatus: StateFlow<DriverStatus>
             field: MutableStateFlow<DriverStatus> = MutableStateFlow(DriverStatus())
 
-        val vdcFileList: StateFlow<List<String>>
-            field: MutableStateFlow<List<String>> = MutableStateFlow(emptyList())
-
-        val kernelFileList: StateFlow<List<String>>
-            field: MutableStateFlow<List<String>> = MutableStateFlow(emptyList())
+        // Kernels and VDCs, imported or in linked folders.
+        val fileLibrary = FileLibrary.get(application)
 
         val autoStartEnabled: StateFlow<Boolean>
             field: MutableStateFlow<Boolean> = MutableStateFlow(false)
@@ -178,7 +176,6 @@ class MainViewModel
             }
 
         init {
-            refreshFileLists()
             observeExternalMasterChanges()
             val initialDevice = audioOutputDetector.activeDevice.value
             viewModelScope.launch {
@@ -1335,20 +1332,7 @@ class MainViewModel
             }
         }
 
-        fun refreshFileLists() {
-            val ddcDir = getFilesDir("DDC")
-            vdcFileList.value = ddcDir
-                .listFiles()
-                ?.filter { it.extension == "vdc" }
-                ?.map { it.nameWithoutExtension }
-                ?.sorted() ?: emptyList()
-
-            val kernelDir = getFilesDir("Kernel")
-            kernelFileList.value = kernelDir
-                .listFiles()
-                ?.map { it.name }
-                ?.sorted() ?: emptyList()
-        }
+        fun refreshFileLists() = fileLibrary.refresh()
 
         fun deleteVdcFile(name: String): Boolean {
             return try {
