@@ -1,3 +1,51 @@
+# ViPER4Android (rootless)
+
+A fork of [likelikeslike/ViPER4Android](https://github.com/likelikeslike/ViPER4Android) that needs no root and no
+Magisk module. The [ViPERDSP](https://github.com/likelikeslike/ViPERDSP) engine runs inside the app. Other apps' sound
+is captured, processed and played back, the way
+[RootlessJamesDSP](https://github.com/timschneeb/RootlessJamesDSP) does it, and their original output is muted.
+
+It installs alongside the original app (`dev.pah.viper4android.rootless`) and needs Android 10 or later.
+
+## Setup
+
+1. Install the APK.
+2. From a computer with adb (or Shizuku / LADB on the phone), grant the permission that lets the app see which apps
+   are playing, so it can mute their original output:
+
+   ```sh
+   adb shell pm grant dev.pah.viper4android.rootless android.permission.DUMP
+   ```
+
+   Without it you hear each app twice: once processed, once not.
+3. Turn ViPER on. Android asks to share your screen: choose the whole screen. Only the audio is used.
+4. Don't run RootlessJamesDSP (or anything else that captures and mutes audio) at the same time.
+
+## Limitations
+
+These come from how rootless capture works, and RootlessJamesDSP has them too:
+
+- Apps that forbid capture of their audio (some calls, DRM'd streams) play unprocessed. They're detected and left
+  alone rather than muted.
+- Processing adds latency (about 0.1 s), so video can be slightly out of sync with its sound.
+- Android shows the screen-sharing indicator while ViPER is on, and asks again for consent each time it starts.
+- The settings for driver mode (AIDL/HIDL), global/per-app mode and the Magisk driver are upstream leftovers and
+  have no effect here.
+
+## Building
+
+```sh
+git clone --recursive https://github.com/Pah-0/RootlessViPER4Android
+./gradlew assembleRelease
+```
+
+The native engine is `app/src/main/cpp`: `viper_engine.h` is a plain C API over ViPERDSP with no Android dependencies,
+and `viper_jni.cpp` binds it for the app.
+
+---
+
+*Upstream README follows.*
+
 # ViPER4Android
 
 Material Design 3 UI for ViPER4Android FX. Full feature set of the ViPER4Android DSP engine with a modern interface.

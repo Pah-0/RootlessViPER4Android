@@ -1,0 +1,3 @@
+[submodule "app/src/main/cpp/ViPERDSP"]
+	path = app/src/main/cpp/ViPERDSP
+	url = https://github.com/likelikeslike/ViPERDSP.git

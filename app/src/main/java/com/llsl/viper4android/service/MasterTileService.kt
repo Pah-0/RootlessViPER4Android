@@ -1,8 +1,11 @@
 package com.llsl.viper4android.service
 
+import android.app.PendingIntent
+import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import com.llsl.viper4android.data.repository.ViperRepository
+import com.llsl.viper4android.rootless.CaptureConsentActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,13 +36,29 @@ class MasterTileService : TileService() {
         render(next)
         scope.launch {
             repository.setBooleanPreference(ViperRepository.PREF_MASTER_ENABLE, next)
-            ViperService.toggleMaster(this@MasterTileService, next)
+            if (next && !ViperService.isCapturing) {
+                // Turning on needs capture consent, which needs an activity:
+                // the tile can open one where the service can't.
+                openCaptureConsent()
+            } else {
+                ViperService.toggleMaster(this@MasterTileService, next)
+            }
         }
     }
 
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
+    }
+
+    private fun openCaptureConsent() {
+        val intent = CaptureConsentActivity.intent(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startActivityAndCollapse(PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE))
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(intent)
+        }
     }
 
     private fun render(enabled: Boolean) {

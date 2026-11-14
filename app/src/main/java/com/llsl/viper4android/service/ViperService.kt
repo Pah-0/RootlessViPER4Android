@@ -1,12 +1,23 @@
 package com.llsl.viper4android.service
 
+import android.app.Activity
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.os.Binder
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.SystemClock
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.llsl.viper4android.R
@@ -20,13 +31,15 @@ import com.llsl.viper4android.effect.EffectState
 import com.llsl.viper4android.effect.deserializeEffectPrefs
 import com.llsl.viper4android.effect.loadEffectStateFromPrefs
 import com.llsl.viper4android.effect.serializeEffectPrefs
+import com.llsl.viper4android.rootless.CaptureConsentActivity
+import com.llsl.viper4android.rootless.RootlessCapture
+import com.llsl.viper4android.rootless.RootlessTransport
+import com.llsl.viper4android.rootless.ViperEngine
 import com.llsl.viper4android.utils.FileLogger
 import com.llsl.viper4android.utils.WavDecoder
-import com.llsl.viper4android.viper.AidlTransport
 import com.llsl.viper4android.viper.BulkKind
 import com.llsl.viper4android.viper.DriverStatus
 import com.llsl.viper4android.viper.EffectRegistry
-import com.llsl.viper4android.viper.HidlTransport
 import com.llsl.viper4android.viper.ParamValue
 import com.llsl.viper4android.viper.ViperParams
 import com.llsl.viper4android.viper.ViperTransport
@@ -52,6 +65,28 @@ class ViperService : LifecycleService() {
         const val ACTION_STOP = "com.llsl.viper4android.service.STOP"
         const val ACTION_TOGGLE_MASTER = "com.llsl.viper4android.service.TOGGLE_MASTER"
         const val EXTRA_MASTER_ENABLED = "com.llsl.viper4android.service.EXTRA_MASTER_ENABLED"
+        private const val ACTION_CAPTURE_CONSENT = "com.llsl.viper4android.service.CAPTURE_CONSENT"
+        private const val EXTRA_PROJECTION_DATA = "com.llsl.viper4android.service.EXTRA_PROJECTION_DATA"
+        private const val CONSENT_RETRY_MS = 30_000L
+
+        // Whether audio is being captured and processed right now.
+        @Volatile
+        var isCapturing: Boolean = false
+            private set
+
+        // Called by CaptureConsentActivity with the screen capture token, or
+        // null if the user refused.
+        fun onCaptureConsent(
+            context: Context,
+            projectionData: Intent?,
+        ) {
+            val intent =
+                Intent(context, ViperService::class.java).apply {
+                    action = ACTION_CAPTURE_CONSENT
+                    putExtra(EXTRA_PROJECTION_DATA, projectionData)
+                }
+            context.startForegroundService(intent)
+        }
 
         fun startService(context: Context) {
             val intent =
@@ -87,6 +122,20 @@ class ViperService : LifecycleService() {
     private var sessionMonitor: AudioSessionMonitor? = null
     private var stateProvider: (() -> EffectState)? = null
     private var lastUiState: EffectState? = null
+
+    // Rootless processing: the engine runs here, fed by RootlessCapture.
+    private val engine by lazy { ViperEngine() }
+    private var projection: MediaProjection? = null
+    private var capture: RootlessCapture? = null
+    private val projectionCallback =
+        object : MediaProjection.Callback() {
+            // The user stopped sharing from the status bar.
+            override fun onStop() {
+                FileLogger.i("Service", "Media projection stopped")
+                stopCapture()
+                setMasterOff()
+            }
+        }
 
     @Volatile
     private var excludedApps: Set<String> = emptySet()
@@ -138,12 +187,15 @@ class ViperService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForegroundAs(ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         FileLogger.i("Service", "Service created")
         lifecycleScope.launch {
             ensureConfigLoaded()
             launch {
-                repository.getStringSetPreference(ViperRepository.PREF_EXCLUDED_APPS).collect { excludedApps = it }
+                repository.getStringSetPreference(ViperRepository.PREF_EXCLUDED_APPS).collect {
+                    excludedApps = it
+                    capture?.setExcludedPackages(it)
+                }
             }
             startAudioOutputMonitor()
         }
@@ -153,17 +205,7 @@ class ViperService : LifecycleService() {
 
     private suspend fun ensureConfigLoaded() {
         if (configLoaded) return
-        useAidlTypeUuid = repository.aidlMode
-        effectRegistry.aidlTypeUuid = useAidlTypeUuid
-        transport =
-            if (useAidlTypeUuid) {
-                AidlTransport()
-            } else {
-                HidlTransport(
-                    { effectRegistry.liveEffects() },
-                    activeEffect = { effectRegistry.activeEffect() },
-                )
-            }.also { installBulkSideChannels(it) }
+        transport = RootlessTransport(engine) { capture?.isRunning == true }.also { installBulkSideChannels(it) }
         globalMode = repository.getBooleanPreference(ViperRepository.PREF_GLOBAL_MODE).first()
         bootMasterEnabled = repository.getBooleanPreference(ViperRepository.PREF_MASTER_ENABLE).first()
         configLoaded = true
@@ -190,20 +232,123 @@ class ViperService : LifecycleService() {
         masterOn: Boolean,
     ) {
         if (!masterOn) {
-            stopSessionMonitor()
-            releaseAllSessions()
-            effectRegistry.releaseGlobal()
+            stopCapture()
             return
         }
-        val newGlobalEffect = globalMode && effectRegistry.globalEffect() == null
-        if (globalMode) {
-            if (newGlobalEffect) initGlobalEffect()
-        } else {
-            if (sessionMonitor == null) startSessionMonitor()
-        }
-        effectRegistry.liveEffects().forEach { it.enabled = true }
-        transport.pushFullState(state, forceBulk = newGlobalEffect)
+        // Set the rate capture will run at before loading kernels and DDC
+        // coefficients, as a rate change resets the engine.
+        val rate = RootlessCapture.sampleRate(this)
+        val rateChanged = engine.samplingRate != rate
+        engine.samplingRate = rate
+        transport.pushFullState(state, forceBulk = rateChanged)
+        startCapture()
     }
+
+    private fun startCapture() {
+        if (capture != null) return
+        val mp = projection
+        if (mp == null) {
+            requestCaptureConsent()
+            return
+        }
+        capture =
+            RootlessCapture(this, engine, mp) { reason ->
+                mainHandler.post {
+                    Toast.makeText(this, getString(R.string.rootless_capture_failed, reason), Toast.LENGTH_LONG).show()
+                    stopCapture()
+                    setMasterOff()
+                }
+            }.also {
+                it.setExcludedPackages(excludedApps)
+                it.start()
+            }
+        isCapturing = true
+    }
+
+    private fun stopCapture() {
+        val hadProjection = projection != null
+        releaseCapture()
+        // Drop the media projection type so the system stops showing that
+        // the screen is being shared.
+        if (hadProjection) startForegroundAs(ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+    }
+
+    private fun releaseCapture() {
+        capture?.stop()
+        capture = null
+        isCapturing = false
+        projection?.let {
+            it.unregisterCallback(projectionCallback)
+            it.stop()
+        }
+        projection = null
+    }
+
+    private fun onProjectionGranted(data: Intent) {
+        startForegroundAs(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+        )
+        projection?.let { releaseCapture() }
+        projection =
+            try {
+                getSystemService(MediaProjectionManager::class.java)
+                    .getMediaProjection(Activity.RESULT_OK, data)
+                    ?.also { it.registerCallback(projectionCallback, mainHandler) }
+            } catch (e: Exception) {
+                FileLogger.e("Service", "Failed to get media projection", e)
+                null
+            }
+        if (projection == null) {
+            stopCapture()
+            setMasterOff()
+            return
+        }
+        lifecycleScope.launch {
+            ensureConfigLoaded()
+            // Consent comes from turning processing on.
+            repository.setBooleanPreference(ViperRepository.PREF_MASTER_ENABLE, true)
+            bootMasterEnabled = true
+            applyState(currentDeviceState(), true)
+        }
+    }
+
+    // Asks for capture consent. Android blocks activity starts from the
+    // background (after boot, from the tile), so a notification offers it too.
+    private fun requestCaptureConsent() {
+        // State pushes while the dialog is up would reopen it.
+        val now = SystemClock.elapsedRealtime()
+        if (now - consentRequestedAt < CONSENT_RETRY_MS) return
+        consentRequestedAt = now
+        val consent = CaptureConsentActivity.intent(this)
+        val notification =
+            NotificationCompat
+                .Builder(this, SERVICE_CHANNEL_ID)
+                .setContentTitle(getString(R.string.rootless_consent_title))
+                .setContentText(getString(R.string.rootless_consent_text))
+                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setAutoCancel(true)
+                .setContentIntent(
+                    PendingIntent.getActivity(this, 1, consent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE),
+                ).build()
+        getSystemService(NotificationManager::class.java)?.notify(CaptureConsentActivity.NOTIFICATION_ID, notification)
+        try {
+            startActivity(consent)
+        } catch (e: Exception) {
+            FileLogger.w("Service", "Can't open capture consent: ${e.message}")
+        }
+    }
+
+    private fun setMasterOff() {
+        bootMasterEnabled = false
+        lifecycleScope.launch {
+            repository.setBooleanPreference(ViperRepository.PREF_MASTER_ENABLE, false)
+        }
+    }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var consentRequestedAt = -CONSENT_RETRY_MS
+
+    private fun startForegroundAs(type: Int) = ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
 
     private var currentServiceDeviceId: String = ""
 
@@ -284,8 +429,7 @@ class ViperService : LifecycleService() {
             }
 
             ACTION_STOP -> {
-                releaseAllSessions()
-                effectRegistry.releaseGlobal()
+                releaseCapture()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -301,16 +445,25 @@ class ViperService : LifecycleService() {
                     applyState(state, next)
                 }
             }
+
+            ACTION_CAPTURE_CONSENT -> {
+                consentRequestedAt = -CONSENT_RETRY_MS
+                val data = IntentCompat.getParcelableExtra(intent, EXTRA_PROJECTION_DATA, Intent::class.java)
+                if (data != null) {
+                    onProjectionGranted(data)
+                } else {
+                    FileLogger.i("Service", "Capture consent refused")
+                    setMasterOff()
+                }
+            }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
-        stopSessionMonitor()
+        releaseCapture()
         audioOutputDetector?.stop()
         audioOutputDetector = null
-        effectRegistry.releaseGlobal()
-        releaseAllSessions()
         FileLogger.i("Service", "Service destroyed")
         super.onDestroy()
     }

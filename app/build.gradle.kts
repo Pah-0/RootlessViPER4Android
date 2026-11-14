@@ -18,11 +18,29 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.llsl.viper4android"
-        minSdk = 28
+        // Separate from upstream's ID so both can be installed.
+        applicationId = "dev.pah.viper4android.rootless"
+        // Playback capture needs Android 10.
+        minSdk = 29
         targetSdk = 37
         versionCode = 1
-        versionName = "2.1.1"
+        versionName = "2.1.1-rootless"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DVERSION_CODE=1", "-DVERSION_NAME=2.1.1-rootless")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     androidResources {
