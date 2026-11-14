@@ -49,8 +49,8 @@ object SessionDump {
     @Volatile
     private var dumpGranted = false
 
-    // Checked until it's granted, then remembered: it stays granted until the
-    // app is reinstalled.
+    // Checked until it's granted, then remembered. A revoke while the app runs
+    // goes unnoticed until it restarts; the dumps then just fail.
     fun hasDumpPermission(context: Context): Boolean {
         if (!dumpGranted) {
             dumpGranted = context.checkSelfPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED
