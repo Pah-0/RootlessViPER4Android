@@ -46,8 +46,17 @@ object SessionDump {
     private val playbackConfigRegex =
         """AudioPlaybackConfiguration.*u/pid:(\d+)/(\d+).*usage=(\w+).*content=(\w+).*sessionId:(\d+)""".toRegex()
 
-    fun hasDumpPermission(context: Context): Boolean =
-        context.checkSelfPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED
+    @Volatile
+    private var dumpGranted = false
+
+    // Checked until it's granted, then remembered: it stays granted until the
+    // app is reinstalled.
+    fun hasDumpPermission(context: Context): Boolean {
+        if (!dumpGranted) {
+            dumpGranted = context.checkSelfPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED
+        }
+        return dumpGranted
+    }
 
     fun dump(context: Context): SessionDumpResult? {
         if (!hasDumpPermission(context)) return null

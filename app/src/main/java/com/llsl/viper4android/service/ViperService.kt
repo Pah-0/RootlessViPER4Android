@@ -34,6 +34,7 @@ import com.llsl.viper4android.effect.serializeEffectPrefs
 import com.llsl.viper4android.rootless.CaptureConsentActivity
 import com.llsl.viper4android.rootless.RootlessCapture
 import com.llsl.viper4android.rootless.RootlessTransport
+import com.llsl.viper4android.rootless.SessionDump
 import com.llsl.viper4android.rootless.ViperEngine
 import com.llsl.viper4android.utils.FileLogger
 import com.llsl.viper4android.utils.WavDecoder
@@ -231,8 +232,18 @@ class ViperService : LifecycleService() {
         state: EffectState,
         masterOn: Boolean,
     ) {
+        val atStartup = startupCheckPending
+        startupCheckPending = false
         if (!masterOn) {
             stopCapture()
+            return
+        }
+        // Without DUMP the original audio isn't muted, so don't come back on
+        // by ourselves; turning it on by hand still works.
+        if (atStartup && !SessionDump.hasDumpPermission(this)) {
+            FileLogger.w("Service", "DUMP not granted: staying off")
+            Toast.makeText(this, R.string.rootless_dump_missing, Toast.LENGTH_LONG).show()
+            setMasterOff()
             return
         }
         // Set the rate capture will run at before loading kernels and DDC
@@ -346,6 +357,10 @@ class ViperService : LifecycleService() {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Whether the first state applied since the service started, which turns
+    // ViPER back on if it was left on, is still to come.
+    private var startupCheckPending = true
     private var consentRequestedAt = -CONSENT_RETRY_MS
 
     private fun startForegroundAs(type: Int) = ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
