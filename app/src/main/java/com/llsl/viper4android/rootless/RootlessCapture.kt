@@ -45,6 +45,10 @@ class RootlessCapture(
     @Volatile
     private var rebuildAll = false
 
+    // Ramp the volume up after each (re)start rather than starting abruptly.
+    @Volatile
+    var fadeIn = true
+
     // Set when the output moves to another device, so audio queued for the old
     // one isn't played late on the new one.
     @Volatile
@@ -174,7 +178,7 @@ class RootlessCapture(
                 if (read <= 0) continue
                 engine.process(buffer, read / 2)
                 // Ramp up after a (re)start so it doesn't begin with a click.
-                if (fadePos < fadeSamples) {
+                if (fadeIn && fadePos < fadeSamples) {
                     var i = 0
                     while (i + 1 < read && fadePos < fadeSamples) {
                         val gain = fadePos.toFloat() / fadeSamples

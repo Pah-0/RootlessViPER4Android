@@ -53,6 +53,8 @@ fun SettingsDialog(
     onOpenExcludedApps: () -> Unit,
     captureBufferFrames: Int,
     onCaptureBufferChanged: (Int) -> Unit,
+    fadeInEnabled: Boolean,
+    onFadeInChanged: (Boolean) -> Unit,
     onImportPreset: () -> Unit,
     onImportKernel: () -> Unit,
     onDebugUnlocked: () -> Unit,
@@ -133,6 +135,13 @@ fun SettingsDialog(
                             modifier = Modifier.padding(bottom = UiDimens.XSmall),
                         )
                     }
+                    RowDivider()
+                    ToggleRow(
+                        label = stringResource(R.string.settings_fade_in),
+                        subtitle = stringResource(R.string.settings_fade_in_desc),
+                        checked = fadeInEnabled,
+                        onCheckedChange = onFadeInChanged,
+                    )
                 }
 
                 DialogSectionLabel(label = stringResource(R.string.settings_files_section))

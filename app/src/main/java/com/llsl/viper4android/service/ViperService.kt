@@ -143,6 +143,7 @@ class ViperService : LifecycleService() {
     @Volatile
     private var excludedApps: Set<String> = emptySet()
     private var captureBufferFrames = RootlessCapture.DEFAULT_BUFFER_FRAMES
+    private var captureFadeIn = true
 
     private data class DecodedKernel(
         val samples: FloatArray,
@@ -208,6 +209,12 @@ class ViperService : LifecycleService() {
                         captureBufferFrames = it
                         capture?.setBufferFrames(it)
                     }
+            }
+            launch {
+                repository.getBooleanPreference(ViperRepository.PREF_FADE_IN, true).collect {
+                    captureFadeIn = it
+                    capture?.fadeIn = it
+                }
             }
             startAudioOutputMonitor()
         }
@@ -282,6 +289,7 @@ class ViperService : LifecycleService() {
                 }
             }.also {
                 it.setExcludedPackages(excludedApps)
+                it.fadeIn = captureFadeIn
                 it.start()
             }
         isCapturing = true

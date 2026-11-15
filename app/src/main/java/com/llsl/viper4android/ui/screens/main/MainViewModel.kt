@@ -23,6 +23,7 @@ import com.llsl.viper4android.data.model.Preset
 import com.llsl.viper4android.data.repository.ViperRepository
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_AUTO_START
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_CAPTURE_BUFFER
+import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_FADE_IN
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_DEBUG_MODE
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_EXCLUDED_APPS
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_GLOBAL_MODE
@@ -139,6 +140,9 @@ class MainViewModel
 
         val captureBufferFrames: StateFlow<Int>
             field: MutableStateFlow<Int> = MutableStateFlow(RootlessCapture.DEFAULT_BUFFER_FRAMES)
+
+        val fadeInEnabled: StateFlow<Boolean>
+            field: MutableStateFlow<Boolean> = MutableStateFlow(true)
 
         val aidlModeEnabled: StateFlow<Boolean>
             field: MutableStateFlow<Boolean> = MutableStateFlow(false)
@@ -370,6 +374,7 @@ class MainViewModel
             debugModeEnabled.value = repository.getBooleanPreference(PREF_DEBUG_MODE, false).first()
             captureBufferFrames.value =
                 repository.getIntPreference(PREF_CAPTURE_BUFFER, RootlessCapture.DEFAULT_BUFFER_FRAMES).first()
+            fadeInEnabled.value = repository.getBooleanPreference(PREF_FADE_IN, true).first()
             aidlModeEnabled.value = repository.aidlMode
             viewModelScope.launch {
                 repository.getStringSetPreference(PREF_EXCLUDED_APPS).collect { excludedApps.value = it }
@@ -1557,6 +1562,11 @@ class MainViewModel
         fun setCaptureBufferFrames(frames: Int) {
             captureBufferFrames.value = frames
             viewModelScope.launch { repository.setIntPreference(PREF_CAPTURE_BUFFER, frames) }
+        }
+
+        fun toggleFadeIn(enabled: Boolean) {
+            fadeInEnabled.value = enabled
+            viewModelScope.launch { repository.setBooleanPreference(PREF_FADE_IN, enabled) }
         }
 
         fun toggleGlobalMode(enabled: Boolean) {

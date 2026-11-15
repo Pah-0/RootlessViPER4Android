@@ -237,5 +237,6 @@ class ViperRepository
             const val PREF_V2_INITIALIZED = "v2_initialized"
             const val PREF_EXCLUDED_APPS = "excluded_apps"
             const val PREF_CAPTURE_BUFFER = "capture_buffer_frames"
+            const val PREF_FADE_IN = "capture_fade_in"
         }
     }

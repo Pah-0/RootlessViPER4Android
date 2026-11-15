@@ -87,6 +87,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val excludedApps by viewModel.excludedApps.collectAsStateWithLifecycle()
     val captureBufferFrames by viewModel.captureBufferFrames.collectAsStateWithLifecycle()
+    val fadeIn by viewModel.fadeInEnabled.collectAsStateWithLifecycle()
 
     var showPresetDialog by remember { mutableStateOf(false) }
     var showDriverStatusDialog by remember { mutableStateOf(false) }
@@ -227,6 +228,8 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
             onOpenExcludedApps = { showExcludedAppsDialog = true },
             captureBufferFrames = captureBufferFrames,
             onCaptureBufferChanged = viewModel::setCaptureBufferFrames,
+            fadeInEnabled = fadeIn,
+            onFadeInChanged = viewModel::toggleFadeIn,
             driverStatus = driverStatus,
             appVersionName = appVersionName,
             onAutoStartChanged = viewModel::toggleAutoStart,
