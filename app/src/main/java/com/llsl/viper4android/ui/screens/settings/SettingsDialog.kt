@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
@@ -27,11 +29,16 @@ import com.llsl.viper4android.ui.components.DialogCard
 import com.llsl.viper4android.ui.components.DialogSectionLabel
 import com.llsl.viper4android.ui.components.IndicatorInfoRow
 import com.llsl.viper4android.ui.components.InfoRow
+import com.llsl.viper4android.ui.components.LabeledDropdown
 import com.llsl.viper4android.ui.components.NavRow
 import com.llsl.viper4android.ui.components.RowDivider
 import com.llsl.viper4android.ui.components.ToggleRow
+import com.llsl.viper4android.ui.components.UiDimens
 import com.llsl.viper4android.ui.screens.main.DriverStatus
 import com.llsl.viper4android.ui.theme.status_active_green
+
+// Frames per capture read, offered in the settings.
+private val CAPTURE_BUFFER_OPTIONS = listOf(256, 512, 1024, 2048, 4096)
 
 @Composable
 fun SettingsDialog(
@@ -44,6 +51,8 @@ fun SettingsDialog(
     onAutoStartChanged: (Boolean) -> Unit,
     onGlobalModeChanged: (Boolean) -> Unit,
     onOpenExcludedApps: () -> Unit,
+    captureBufferFrames: Int,
+    onCaptureBufferChanged: (Int) -> Unit,
     onImportPreset: () -> Unit,
     onImportKernel: () -> Unit,
     onDebugUnlocked: () -> Unit,
@@ -98,6 +107,30 @@ fun SettingsDialog(
                             label = stringResource(R.string.settings_excluded_apps),
                             subtitle = stringResource(R.string.settings_excluded_apps_desc),
                             onClick = onOpenExcludedApps,
+                        )
+                    }
+                }
+
+                DialogSectionLabel(label = stringResource(R.string.settings_audio_section))
+                DialogCard {
+                    val options =
+                        CAPTURE_BUFFER_OPTIONS.map {
+                            stringResource(R.string.settings_capture_buffer_option, it, it * 1000 / 48000)
+                        }
+                    val selected = CAPTURE_BUFFER_OPTIONS.indexOf(captureBufferFrames)
+                    Column(modifier = Modifier.padding(horizontal = UiDimens.Standard, vertical = UiDimens.XSmall)) {
+                        LabeledDropdown(
+                            label = stringResource(R.string.settings_capture_buffer),
+                            selectedValue =
+                                if (selected >= 0) options[selected] else captureBufferFrames.toString(),
+                            options = options,
+                            onOptionSelected = { index, _ -> onCaptureBufferChanged(CAPTURE_BUFFER_OPTIONS[index]) },
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_capture_buffer_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = UiDimens.XSmall),
                         )
                     }
                 }

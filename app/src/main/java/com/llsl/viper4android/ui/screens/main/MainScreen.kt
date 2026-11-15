@@ -86,6 +86,7 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
     val debugMode by viewModel.debugModeEnabled.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val excludedApps by viewModel.excludedApps.collectAsStateWithLifecycle()
+    val captureBufferFrames by viewModel.captureBufferFrames.collectAsStateWithLifecycle()
 
     var showPresetDialog by remember { mutableStateOf(false) }
     var showDriverStatusDialog by remember { mutableStateOf(false) }
@@ -224,6 +225,8 @@ fun MainScreen(viewModel: MainViewModel = hiltViewModel()) {
             debugModeEnabled = debugMode,
             onGlobalModeChanged = viewModel::toggleGlobalMode,
             onOpenExcludedApps = { showExcludedAppsDialog = true },
+            captureBufferFrames = captureBufferFrames,
+            onCaptureBufferChanged = viewModel::setCaptureBufferFrames,
             driverStatus = driverStatus,
             appVersionName = appVersionName,
             onAutoStartChanged = viewModel::toggleAutoStart,

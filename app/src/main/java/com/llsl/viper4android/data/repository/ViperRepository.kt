@@ -236,5 +236,6 @@ class ViperRepository
             const val PREF_DEBUG_MODE = "debug_mode"
             const val PREF_V2_INITIALIZED = "v2_initialized"
             const val PREF_EXCLUDED_APPS = "excluded_apps"
+            const val PREF_CAPTURE_BUFFER = "capture_buffer_frames"
         }
     }

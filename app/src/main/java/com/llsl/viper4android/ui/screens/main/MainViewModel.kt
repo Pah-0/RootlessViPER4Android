@@ -22,6 +22,7 @@ import com.llsl.viper4android.data.model.EqPreset
 import com.llsl.viper4android.data.model.Preset
 import com.llsl.viper4android.data.repository.ViperRepository
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_AUTO_START
+import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_CAPTURE_BUFFER
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_DEBUG_MODE
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_EXCLUDED_APPS
 import com.llsl.viper4android.data.repository.ViperRepository.Companion.PREF_GLOBAL_MODE
@@ -46,6 +47,7 @@ import com.llsl.viper4android.effect.loadEffectStateFromPrefs
 import com.llsl.viper4android.effect.saveEffectPrefs
 import com.llsl.viper4android.effect.serializeEffectPrefs
 import com.llsl.viper4android.library.FileLibrary
+import com.llsl.viper4android.rootless.RootlessCapture
 import com.llsl.viper4android.service.ViperService
 import com.llsl.viper4android.utils.FileLogger
 import com.llsl.viper4android.utils.ReleaseInfo
@@ -134,6 +136,9 @@ class MainViewModel
 
         val autoStartEnabled: StateFlow<Boolean>
             field: MutableStateFlow<Boolean> = MutableStateFlow(false)
+
+        val captureBufferFrames: StateFlow<Int>
+            field: MutableStateFlow<Int> = MutableStateFlow(RootlessCapture.DEFAULT_BUFFER_FRAMES)
 
         val aidlModeEnabled: StateFlow<Boolean>
             field: MutableStateFlow<Boolean> = MutableStateFlow(false)
@@ -363,6 +368,8 @@ class MainViewModel
             autoStartEnabled.value = repository.getBooleanPreference(PREF_AUTO_START, false).first()
             globalModeEnabled.value = repository.getBooleanPreference(PREF_GLOBAL_MODE, false).first()
             debugModeEnabled.value = repository.getBooleanPreference(PREF_DEBUG_MODE, false).first()
+            captureBufferFrames.value =
+                repository.getIntPreference(PREF_CAPTURE_BUFFER, RootlessCapture.DEFAULT_BUFFER_FRAMES).first()
             aidlModeEnabled.value = repository.aidlMode
             viewModelScope.launch {
                 repository.getStringSetPreference(PREF_EXCLUDED_APPS).collect { excludedApps.value = it }
@@ -1545,6 +1552,11 @@ class MainViewModel
         fun toggleAutoStart(enabled: Boolean) {
             autoStartEnabled.value = enabled
             viewModelScope.launch { repository.setBooleanPreference(PREF_AUTO_START, enabled) }
+        }
+
+        fun setCaptureBufferFrames(frames: Int) {
+            captureBufferFrames.value = frames
+            viewModelScope.launch { repository.setIntPreference(PREF_CAPTURE_BUFFER, frames) }
         }
 
         fun toggleGlobalMode(enabled: Boolean) {

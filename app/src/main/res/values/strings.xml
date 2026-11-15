@@ -247,6 +247,10 @@
 
     <!-- Settings -->
     <string name="settings_general_section">General</string>
+    <string name="settings_audio_section">Audio</string>
+    <string name="settings_capture_buffer">Buffer size</string>
+    <string name="settings_capture_buffer_option">%1$d frames (about %2$d ms)</string>
+    <string name="settings_capture_buffer_desc">Smaller buffers cut the delay before you hear the sound. If audio crackles or drops out, pick a larger one.</string>
     <string name="settings_files_section">Files</string>
     <string name="settings_about_section">About</string>
     <string name="settings_auto_start">Auto-start on boot</string>

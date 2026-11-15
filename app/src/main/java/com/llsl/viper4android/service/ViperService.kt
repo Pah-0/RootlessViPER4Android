@@ -142,6 +142,7 @@ class ViperService : LifecycleService() {
 
     @Volatile
     private var excludedApps: Set<String> = emptySet()
+    private var captureBufferFrames = RootlessCapture.DEFAULT_BUFFER_FRAMES
 
     private data class DecodedKernel(
         val samples: FloatArray,
@@ -199,6 +200,14 @@ class ViperService : LifecycleService() {
                     excludedApps = it
                     capture?.setExcludedPackages(it)
                 }
+            }
+            launch {
+                repository
+                    .getIntPreference(ViperRepository.PREF_CAPTURE_BUFFER, RootlessCapture.DEFAULT_BUFFER_FRAMES)
+                    .collect {
+                        captureBufferFrames = it
+                        capture?.setBufferFrames(it)
+                    }
             }
             startAudioOutputMonitor()
         }
@@ -265,7 +274,7 @@ class ViperService : LifecycleService() {
             return
         }
         capture =
-            RootlessCapture(this, engine, mp) { reason ->
+            RootlessCapture(this, engine, mp, captureBufferFrames) { reason ->
                 mainHandler.post {
                     Toast.makeText(this, getString(R.string.rootless_capture_failed, reason), Toast.LENGTH_LONG).show()
                     stopCapture()

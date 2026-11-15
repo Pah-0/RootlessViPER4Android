@@ -23,8 +23,8 @@ android {
         // Playback capture needs Android 10.
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "2.1.1-rootless"
+        versionCode = 2
+        versionName = "2.1.2-rootless"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
