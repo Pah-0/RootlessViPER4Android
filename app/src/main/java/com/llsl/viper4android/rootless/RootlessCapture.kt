@@ -159,10 +159,15 @@ class RootlessCapture(
                     FileLogger.i("Capture", "Output device changed: dropped queued audio")
                 }
 
-                // Nothing to process: let the audio hardware sleep.
+                // Nothing to process: let the audio hardware sleep. Drop what's
+                // queued for output rather than letting stop() play it out, or
+                // the end of the last track plays when the next one starts.
                 if (muter.isTracking && !muter.hasMutedSessions) {
                     if (rec.recordingState == AudioRecord.RECORDSTATE_RECORDING) rec.stop()
-                    if (out.playState != AudioTrack.PLAYSTATE_STOPPED) out.stop()
+                    if (out.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                        out.pause()
+                        out.flush()
+                    }
                     fadePos = 0
                     try {
                         Thread.sleep(IDLE_SLEEP_MS)
@@ -171,7 +176,10 @@ class RootlessCapture(
                     }
                     continue
                 }
-                if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) rec.startRecording()
+                if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    rec.startRecording()
+                    drain(rec, buffer)
+                }
                 if (out.playState != AudioTrack.PLAYSTATE_PLAYING) out.play()
 
                 val read = rec.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
@@ -203,6 +211,21 @@ class RootlessCapture(
             track?.release()
             FileLogger.i("Capture", "Stopped")
         }
+    }
+
+    // Discard what the recorder still holds from before it was stopped.
+    private fun drain(
+        rec: AudioRecord,
+        buffer: FloatArray,
+    ) {
+        var dropped = 0
+        for (i in 0 until MAX_DRAIN_READS) {
+            val n = rec.read(buffer, 0, buffer.size, AudioRecord.READ_NON_BLOCKING)
+            if (n <= 0) break
+            dropped += n
+            if (n < buffer.size) break
+        }
+        if (dropped > 0) FileLogger.d("Capture", "Dropped ${dropped / 2} stale frames")
     }
 
     @SuppressLint("MissingPermission")
@@ -285,6 +308,7 @@ class RootlessCapture(
         private const val FRAME_BYTES = 2 * Float.SIZE_BYTES
         private const val IDLE_SLEEP_MS = 50L
         private const val FADE_IN_MS = 50
+        private const val MAX_DRAIN_READS = 64
 
         // The output's native rate, limited to the two rates ViPER's DDC
         // coefficients come in.
