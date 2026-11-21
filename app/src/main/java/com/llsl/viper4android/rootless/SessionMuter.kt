@@ -2,7 +2,6 @@ package com.llsl.viper4android.rootless
 
 import android.content.Context
 import android.media.AudioManager
-import android.media.AudioAttributes
 import android.media.AudioPlaybackConfiguration
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.DynamicsProcessing
@@ -75,21 +74,6 @@ class SessionMuter(
     private val playbackCallback =
         object : AudioManager.AudioPlaybackCallback() {
             override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
-                configs?.forEach { config ->
-                    val sid = config.audioSessionId
-                    if (sid == 0 || sid in muted || sid in pendingMutes) return@forEach
-                    val uid = config.uid
-                    val pkg = context.packageManager.getNameForUid(uid) ?: return@forEach
-                    if (uid == Process.myUid() || uid in excludedUids || uid in restrictedUids) return@forEach
-                    val usage = config.playbackAttributes.usage
-                    val capturable = usage == AudioAttributes.USAGE_MEDIA
-                        || usage == AudioAttributes.USAGE_GAME
-                        || usage == AudioAttributes.USAGE_UNKNOWN
-                    if (!capturable) return@forEach
-                    // Immediately mute; dump will confirm or clean up.
-                    mute(sid, PlaybackSession(uid, pkg, "callback"))
-                    pendingMutes[sid] = PlaybackSession(uid, pkg, "callback")
-                }
                 poll()
             }
         }
