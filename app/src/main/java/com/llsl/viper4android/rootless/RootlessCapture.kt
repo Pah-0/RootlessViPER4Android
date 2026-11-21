@@ -121,8 +121,18 @@ class RootlessCapture(
 
         var recorder: AudioRecord? = null
         var track: AudioTrack? = null
+        var lastActive = SystemClock.elapsedRealtime()
+        var recorderUids: Set<Int>? = null
+
+        fun releaseRecorder() {
+            recorder?.let {
+                runCatching { it.stop() }
+                it.release()
+            }
+            recorder = null
+        }
+
         try {
-            recorder = buildRecorder(sampleRate, frames)
             track = buildTrack(sampleRate, frames).also { it.addOnRoutingChangedListener(routingListener, handler) }
             while (!stopping) {
                 if (rebuildAll) {
@@ -130,25 +140,17 @@ class RootlessCapture(
                     recreateRecorder = false
                     frames = bufferFrames
                     buffer = FloatArray(frames * 2)
-                    recorder?.stop()
-                    recorder?.release()
+                    releaseRecorder()
                     track?.removeOnRoutingChangedListener(routingListener)
                     track?.stop()
                     track?.release()
-                    recorder = buildRecorder(sampleRate, frames)
                     track = buildTrack(sampleRate, frames).also { it.addOnRoutingChangedListener(routingListener, handler) }
-                    fadePos = 0
                     FileLogger.i("Capture", "Rebuilt with $frames frames per buffer")
                 }
                 if (recreateRecorder) {
                     recreateRecorder = false
-                    recorder?.stop()
-                    recorder?.release()
-                    recorder = buildRecorder(sampleRate, frames)
-                    fadePos = 0
-                    FileLogger.i("Capture", "Recorder rebuilt")
+                    releaseRecorder()
                 }
-                val rec = recorder ?: break
                 val out = track ?: break
 
                 if (routeChanged) {
@@ -159,11 +161,20 @@ class RootlessCapture(
                     FileLogger.i("Capture", "Output device changed: dropped queued audio")
                 }
 
-                // Nothing to process: let the audio hardware sleep. Drop what's
-                // queued for output rather than letting stop() play it out, or
-                // the end of the last track plays when the next one starts.
-                if (muter.isTracking && !muter.hasMutedSessions) {
-                    if (rec.recordingState == AudioRecord.RECORDSTATE_RECORDING) rec.stop()
+                // Nothing to process: let the audio hardware sleep. Wait a
+                // little first, as players often end one session and start
+                // another between tracks. Release the recorder, so nothing
+                // it holds is played later, and drop what's queued for output
+                // rather than letting it play out.
+                val now = SystemClock.elapsedRealtime()
+                val wanted = if (muter.isTracking) muter.mutedUids else null
+                if (wanted == null || wanted.isNotEmpty()) lastActive = now
+                val idle = now - lastActive >= IDLE_GRACE_MS || (recorder == null && wanted?.isEmpty() == true)
+                if (idle) {
+                    if (recorder != null) {
+                        releaseRecorder()
+                        FileLogger.d("Capture", "Idle")
+                    }
                     if (out.playState == AudioTrack.PLAYSTATE_PLAYING) {
                         out.pause()
                         out.flush()
@@ -176,10 +187,23 @@ class RootlessCapture(
                     }
                     continue
                 }
-                if (rec.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                    rec.startRecording()
-                    drain(rec, buffer)
+
+                // Capture only the apps that are muted: anything else would be
+                // heard twice. A newly muted app needs a new recorder.
+                val stale =
+                    recorder != null &&
+                        (
+                            (wanted == null) != (recorderUids == null) ||
+                                (wanted != null && !recorderUids!!.containsAll(wanted))
+                        )
+                if (recorder == null || stale) {
+                    releaseRecorder()
+                    recorder = buildRecorder(sampleRate, frames, wanted).also { it.startRecording() }
+                    recorderUids = wanted
+                    fadePos = 0
+                    FileLogger.d("Capture", "Capturing ${wanted?.joinToString() ?: "all apps"}")
                 }
+                val rec = recorder ?: break
                 if (out.playState != AudioTrack.PLAYSTATE_PLAYING) out.play()
 
                 val read = rec.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
@@ -204,28 +228,12 @@ class RootlessCapture(
                 onFailure(e.message ?: e.javaClass.simpleName)
             }
         } finally {
-            runCatching { recorder?.stop() }
+            runCatching { releaseRecorder() }
             runCatching { track?.removeOnRoutingChangedListener(routingListener) }
             runCatching { track?.stop() }
-            recorder?.release()
             track?.release()
             FileLogger.i("Capture", "Stopped")
         }
-    }
-
-    // Discard what the recorder still holds from before it was stopped.
-    private fun drain(
-        rec: AudioRecord,
-        buffer: FloatArray,
-    ) {
-        var dropped = 0
-        for (i in 0 until MAX_DRAIN_READS) {
-            val n = rec.read(buffer, 0, buffer.size, AudioRecord.READ_NON_BLOCKING)
-            if (n <= 0) break
-            dropped += n
-            if (n < buffer.size) break
-        }
-        if (dropped > 0) FileLogger.d("Capture", "Dropped ${dropped / 2} stale frames")
     }
 
     @SuppressLint("MissingPermission")
@@ -308,7 +316,7 @@ class RootlessCapture(
         private const val FRAME_BYTES = 2 * Float.SIZE_BYTES
         private const val IDLE_SLEEP_MS = 50L
         private const val FADE_IN_MS = 50
-        private const val MAX_DRAIN_READS = 64
+        private const val IDLE_GRACE_MS = 2000L
 
         // The output's native rate, limited to the two rates ViPER's DDC
         // coefficients come in.

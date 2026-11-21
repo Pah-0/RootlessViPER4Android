@@ -8,6 +8,7 @@ import android.media.audiofx.DynamicsProcessing
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import com.llsl.viper4android.utils.FileLogger
 import java.util.concurrent.Executors
 
@@ -29,6 +30,8 @@ class SessionMuter(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val dumpExecutor = Executors.newSingleThreadExecutor()
     private val muted = mutableMapOf<Int, MutedSession>()
+    // Sessions seen by callback but not yet confirmed by dump.
+    private val pendingMutes = mutableMapOf<Int, PlaybackSession>()
     private var released = false
 
     private data class MutedSession(
@@ -58,6 +61,11 @@ class SessionMuter(
     var hasMutedSessions = false
         private set
 
+    // The apps with a muted session: the only ones worth capturing.
+    @Volatile
+    var mutedUids: Set<Int> = emptySet()
+        private set
+
     // Whether a session dump has worked, so sessions are being tracked.
     @Volatile
     var isTracking = false
@@ -66,6 +74,21 @@ class SessionMuter(
     private val playbackCallback =
         object : AudioManager.AudioPlaybackCallback() {
             override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
+                configs?.forEach { config ->
+                    val sid = config.audioSessionId
+                    if (sid == 0 || sid in muted || sid in pendingMutes) return@forEach
+                    val uid = config.uid
+                    val pkg = uidOf(uid) ?: return@forEach
+                    if (uid == Process.myUid() || uid in excludedUids || uid in restrictedUids) return@forEach
+                    val usage = config.playbackAttributes.usage
+                    val capturable = usage == AudioAttributes.USAGE_MEDIA
+                        || usage == AudioAttributes.USAGE_GAME
+                        || usage == AudioAttributes.USAGE_UNKNOWN
+                    if (!capturable) return@forEach
+                    // Immediately mute; dump will confirm or clean up.
+                    mute(sid, PlaybackSession(uid, pkg, "callback"))
+                    pendingMutes[sid] = PlaybackSession(uid, pkg, "callback")
+                }
                 poll()
             }
         }
@@ -106,8 +129,10 @@ class SessionMuter(
         }
 
         muted.keys.filter { it !in result.sessions }.forEach(::unmute)
+        // Clear pending mutes for sessions that the dump now knows about.
+        pendingMutes.keys.filter { it !in result.sessions }.forEach { pendingMutes.remove(it) }
         for ((sid, session) in result.sessions) {
-            if (sid == 0 || sid in muted) continue
+            if (sid == 0 || sid in muted || sid in pendingMutes) continue
             if (session.uid == Process.myUid() || session.uid in excludedUids || session.uid in restrictedUids) continue
             if (!session.isCapturable) continue
             mute(sid, session)
@@ -142,6 +167,7 @@ class SessionMuter(
         }
         muted[sid] = MutedSession(session.uid, session.packageName, effect)
         hasMutedSessions = true
+        mutedUids = muted.values.mapTo(mutableSetOf()) { it.uid }
         FileLogger.i("SessionMuter", "Muted session $sid (${session.packageName})")
     }
 
@@ -162,6 +188,7 @@ class SessionMuter(
     private fun unmute(sid: Int) {
         val session = muted.remove(sid) ?: return
         hasMutedSessions = muted.isNotEmpty()
+        mutedUids = muted.values.mapTo(mutableSetOf()) { it.uid }
         try {
             session.effect.enabled = false
             session.effect.release()
