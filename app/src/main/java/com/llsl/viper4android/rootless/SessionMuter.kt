@@ -2,6 +2,7 @@ package com.llsl.viper4android.rootless
 
 import android.content.Context
 import android.media.AudioManager
+import android.media.AudioAttributes
 import android.media.AudioPlaybackConfiguration
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.DynamicsProcessing
@@ -78,7 +79,7 @@ class SessionMuter(
                     val sid = config.audioSessionId
                     if (sid == 0 || sid in muted || sid in pendingMutes) return@forEach
                     val uid = config.uid
-                    val pkg = uidOf(uid) ?: return@forEach
+                    val pkg = context.packageManager.getNameForUid(uid) ?: return@forEach
                     if (uid == Process.myUid() || uid in excludedUids || uid in restrictedUids) return@forEach
                     val usage = config.playbackAttributes.usage
                     val capturable = usage == AudioAttributes.USAGE_MEDIA

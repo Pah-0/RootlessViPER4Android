@@ -12,6 +12,7 @@ import android.media.AudioTrack
 import android.media.projection.MediaProjection
 import android.os.Build
 import android.os.Handler
+import android.os.SystemClock
 import android.os.Looper
 import android.os.Process
 import com.llsl.viper4android.utils.FileLogger
@@ -240,6 +241,7 @@ class RootlessCapture(
     private fun buildRecorder(
         sampleRate: Int,
         frames: Int,
+        wanted: Set<Int>?,
     ): AudioRecord {
         // Room for two reads, so a slow pass doesn't drop audio; any more would
         // only let a backlog, and with it the delay, build up.
